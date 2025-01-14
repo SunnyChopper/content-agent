@@ -1,0 +1,11 @@
+Research Query: "{content_query}"
+
+## Available URLs
+{formatted_results}
+
+## Existing Insights
+{existing_insights}
+
+---
+
+Select up to {max_urls} most relevant URLs for detailed analysis.

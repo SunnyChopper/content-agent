@@ -1,0 +1,4 @@
+Insights:
+{insights}
+
+Please return the JSON array of follow-up queries.

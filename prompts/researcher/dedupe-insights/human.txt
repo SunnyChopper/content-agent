@@ -1,0 +1,6 @@
+Given these insights, remove any that are semantically similar or convey the same information.
+
+Insights:
+{insights}
+
+Return a JSON object with only unique insights and their corresponding hyperlinks.

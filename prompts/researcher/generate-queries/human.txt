@@ -1,0 +1,11 @@
+## Existing Research Findings
+{research_data}
+
+## Existing Search Queries
+{search_queries}
+
+My blog post request: "{content_query}"
+
+---
+
+Please give me the JSON array of search queries.

@@ -1,0 +1,11 @@
+Search results
+---
+{search_results}
+---
+
+Research insights
+---
+{research_insights}
+---
+
+Please give me the JSON array of hyperlinks.

@@ -1,0 +1,15 @@
+Please create a comprehensive outline for a blog post about: {content_query}
+
+Research Insights:
+{research_insights}
+
+Business Goals:
+{business_goals}
+
+SEO Keywords:
+{seo_keywords}
+
+Length Requirements:
+{target_word_count}
+
+Please generate an outline that effectively covers the research insights while incorporating the business goals and SEO keywords naturally. The outline should be structured to deliver value to readers while meeting our content objectives. 

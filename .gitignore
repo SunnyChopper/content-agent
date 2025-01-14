@@ -1,0 +1,7 @@
+__pycache__
+.codegpt
+.DS_Store
+.env
+venv/
+.cursorignore
+cache/

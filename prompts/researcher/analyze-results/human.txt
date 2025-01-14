@@ -1,0 +1,10 @@
+My blog post request: {content_query}
+
+---
+Title: {title}
+URL: {link}
+Snippet: {snippet}
+Full Content: {full_content}
+---
+
+Please give me the JSON array of insights and new search queries for any new information that may be relevant to the blog post.

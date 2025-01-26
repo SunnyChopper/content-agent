@@ -1,14 +1,16 @@
-import os
-import sys
+from typing import List, Optional, Union
 import logging
-from typing import List, Optional
+import sys
+import os
 
 # Add project root to Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import StateGraph, START, END
+from langchain_openai import ChatOpenAI
+from langchain_ollama import ChatOllama
 
 from models.states.agents.writer_state import (
     WriterState,
@@ -19,7 +21,7 @@ from models.states.agents.writer_state import (
     ContentSection
 )
 
-from settings import DEFAULT_OPENAI_CHEAP_MODEL
+from settings import DEFAULT_OPENAI_CHEAP_MODEL, DEFAULT_OLLAMA_MODEL
 
 # Prompts
 BASE_PROMPT_DIR: str = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "prompts", "writer")
@@ -39,7 +41,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class WriterAgent:
-    def __init__(self, llm: ChatOpenAI):
+    def __init__(self, llm: Union[ChatOpenAI, ChatOllama, ChatGoogleGenerativeAI]):
         self.llm = llm
 
     def __generate_outline(
@@ -76,7 +78,7 @@ class WriterAgent:
         )
         
         # Create structured output LLM
-        structured_llm = self.llm.with_structured_output(ContentOutline)
+        structured_llm = self.llm.with_structured_output(ContentOutline, method="json_schema")
         
         # Generate outline
         return structured_llm.invoke([
@@ -91,7 +93,9 @@ class WriterAgent:
         research_insights: List[str],
         outline: ContentOutline,
         business_goals: Optional[List[BusinessGoal]] = None,
-        seo_keywords: Optional[List[SEOKeyword]] = None
+        seo_keywords: Optional[List[SEOKeyword]] = None,
+        existing_sections: Optional[List[ContentSection]] = None,
+        hyperlinks: Optional[List[str]] = None
     ) -> ContentSection:
         """Writes a single section of the blog post."""
         logger.info(f"Writing section: {section_title}")
@@ -108,17 +112,32 @@ class WriterAgent:
         formatted_keywords = "\n".join(f"- {kw.keyword} ({kw.search_volume} monthly searches)" for kw in (seo_keywords or []))
         formatted_outline = "\n".join(f"- {section}" for section in outline.sections)
         
+        # Format existing sections if available
+        formatted_existing_sections = ""
+        if existing_sections:
+            formatted_existing_sections = "\n\nExisting article sections:\n"
+            for section in existing_sections:
+                formatted_existing_sections += f"\n## {section.title}\n{section.content}\n"
+        
+        # Add hyperlinks to prompt
+        formatted_hyperlinks = "\n".join(
+            f"- [{hl['title']}]({hl['link']})" 
+            for hl in hyperlinks
+        )
+        
         human_prompt = human_prompt_template.format(
             content_query=content_query,
             section_title=section_title,
             research_insights=formatted_insights,
             business_goals=formatted_goals or "No specific business goals provided.",
             seo_keywords=formatted_keywords or "No SEO keywords provided.",
-            content_outline=formatted_outline
+            content_outline=formatted_outline,
+            existing_sections=formatted_existing_sections,
+            hyperlinks=formatted_hyperlinks
         )
         
         # Create structured output LLM
-        structured_llm = self.llm.with_structured_output(ContentSection)
+        structured_llm = self.llm.with_structured_output(ContentSection, method="json_schema")
         
         # Write section
         return structured_llm.invoke([
@@ -144,7 +163,7 @@ class WriterAgent:
             meta_description = f"Learn about {content_query}"
             
         # Add value proposition
-        meta_description += " in this comprehensive guide. "
+        meta_description += " in this comprehensive guide. [Get our free AI implementation checklist]"
         
         # Add preview of what they'll learn (from first few sections)
         preview_sections = outline.sections[:2]  # Take first two sections
@@ -161,13 +180,23 @@ class WriterAgent:
         return meta_description
 
     def invoke(self, state: WriterState) -> WriterState:
+        # Initialize blog post with outline data
+        blog_post = state.get("blog_post") or BlogPost(
+            title=state.get("content_outline", ContentOutline(title="")).title,
+            sections=[],
+            meta_description="",
+            target_keywords=state.get("seo_keywords", []),
+            estimated_read_time=0
+        )
+        
         current_writing_step = state.get("current_writing_step", "generate_outline")
         content_query = state["content_query"]
         research_insights = state["research_insights"]
         business_goals = state.get("business_goals")
         target_read_time = state.get("target_read_time")
         seo_keywords = state.get("seo_keywords")
-        
+        hyperlinks = state.get("hyperlinks", [])
+
         if current_writing_step == "generate_outline":
             # Generate content outline
             outline = self.__generate_outline(
@@ -178,6 +207,9 @@ class WriterAgent:
                 seo_keywords=seo_keywords
             )
             
+            blog_post.title = outline.title  # Update title from outline
+            blog_post.target_keywords = [kw.keyword for kw in seo_keywords]
+            
             return WriterState(
                 content_query=content_query,
                 research_insights=research_insights,
@@ -185,6 +217,7 @@ class WriterAgent:
                 target_read_time=target_read_time,
                 seo_keywords=seo_keywords,
                 content_outline=outline,
+                blog_post=blog_post,
                 current_writing_step="write_sections"
             )
             
@@ -192,7 +225,7 @@ class WriterAgent:
             outline = state["content_outline"]
             sections = []
             
-            # Write each section
+            # Write each section and update blog post incrementally
             for section_title in outline.sections:
                 section = self.__write_section(
                     section_title=section_title,
@@ -200,29 +233,20 @@ class WriterAgent:
                     research_insights=research_insights,
                     outline=outline,
                     business_goals=business_goals,
-                    seo_keywords=seo_keywords
+                    seo_keywords=seo_keywords,
+                    existing_sections=sections,
+                    hyperlinks=hyperlinks
                 )
                 sections.append(section)
-            
-            # Calculate estimated read time (200 words per minute)
-            total_words = sum(len(section.content.split()) for section in sections)
-            estimated_read_time = total_words // 200
-            
-            # Generate SEO-optimized meta description
-            meta_description = self.__generate_meta_description(
-                content_query=content_query,
-                outline=outline,
-                seo_keywords=seo_keywords
-            )
-            
-            # Create final blog post
-            blog_post = BlogPost(
-                title=outline.title,
-                sections=sections,
-                meta_description=meta_description,
-                target_keywords=[kw.keyword for kw in (seo_keywords or [])],
-                estimated_read_time=estimated_read_time
-            )
+                
+                # Update blog post incrementally
+                blog_post.sections = sections
+                blog_post.estimated_read_time = max(1, sum(len(section.content.split()) for section in sections) // 200)
+                blog_post.meta_description = self.__generate_meta_description(
+                    content_query=content_query,
+                    outline=outline,
+                    seo_keywords=seo_keywords
+                )
             
             return WriterState(
                 content_query=content_query,
@@ -249,9 +273,12 @@ def writer_agent_postaction(state: WriterState) -> str:
     else:
         return END
 
+# gpt_4o_mini = ChatOpenAI(model=DEFAULT_OPENAI_CHEAP_MODEL, temperature=0.7)
+local_llm = ChatOllama(model=DEFAULT_OLLAMA_MODEL, temperature=0)
+
 workflow = StateGraph(WriterState)
 writer_agent = WriterAgent(
-    llm=ChatOpenAI(model=DEFAULT_OPENAI_CHEAP_MODEL, temperature=0.7)
+    llm=local_llm
 )
 
 # Nodes

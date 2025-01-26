@@ -6,3 +6,25 @@ Return a list of hyperlink objects in JSON format with each object containing:
 - title: A descriptive title for the source (string)
 - url: The source URL (string)
 - relevance: A brief explanation of how this source supports a specific insight (string)
+
+Example Output:
+{{
+  [
+    {{
+      "title": "The Future of AI in Business",
+      "url": "https://example.com/ai-future",
+      "relevance": "This source provides concrete examples of AI automation in customer service, directly supporting the insight about task automation"
+    }},
+    {{
+      "title": "AI Trends Report 2024",
+      "url": "https://example.com/ai-trends",
+      "relevance": "The report includes statistics on AI adoption rates that validate the insight about increasing AI integration in businesses"
+    }}
+  ]
+}}
+
+Guidelines:
+1. Each hyperlink must directly support at least one specific insight
+2. The relevance explanation should clearly connect the source to the insight it supports
+3. Only include sources that provide concrete evidence (statistics, examples, case studies)
+4. Return ONLY the JSON object

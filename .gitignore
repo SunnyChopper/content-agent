@@ -5,3 +5,4 @@ __pycache__
 venv/
 .cursorignore
 cache/
+blog_post_*.txt

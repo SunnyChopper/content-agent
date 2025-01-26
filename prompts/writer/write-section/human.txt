@@ -15,13 +15,16 @@ SEO Keywords:
 Full Content Outline:
 {content_outline}
 
-Please write this section in a way that flows naturally with the rest of the outline while incorporating relevant research insights, business goals, and SEO keywords. When citing sources and research, weave hyperlinks naturally into relevant sentences - they should enhance the reader's understanding without disrupting the flow of the content. Each hyperlink should provide valuable additional context or supporting evidence for the claims being made.
+Previously Written Sections:
+{existing_sections}
+
+Please write this section in a way that flows naturally with the rest of the outline and previously written sections while incorporating relevant research insights, business goals, and SEO keywords. When citing sources and research, weave hyperlinks naturally into relevant sentences - they should enhance the reader's understanding without disrupting the flow of the content. Each hyperlink should provide valuable additional context or supporting evidence for the claims being made.
 
 Pay special attention to transitions between ideas and sections:
-- Begin sections with phrases that connect to previous content (e.g. "Building on what we discussed earlier...")
-- Use transitional phrases to link related ideas (e.g. "Furthermore", "In addition", "On the other hand")
-- Create smooth bridges between paragraphs (e.g. "This naturally leads us to...", "With this foundation...")
-- Reference earlier sections when relevant (e.g. "As we saw in the previous section...")
+- Begin sections with phrases that connect to previous content
+- Use transitional phrases to link related ideas
+- Create smooth bridges between paragraphs
+- Reference earlier sections when relevant
 - End sections with forward-looking transitions to upcoming content
 
 Aim to:
@@ -31,5 +34,15 @@ Aim to:
 - Maintain a balanced link density that doesn't overwhelm the reader
 - Ensure links enhance rather than interrupt the reading experience
 - Use transitional phrases and sentences to create logical connections between ideas
+- Reference and build upon content from previously written sections when relevant
 
 The content should maintain an engaging and informative tone while seamlessly integrating transitions, citations and hyperlinks in a way that enriches the reader's journey through the content. Each section should feel like a natural progression from what came before and lead smoothly into what follows.
+
+Available Citations (USE ONLY THESE):
+{hyperlinks}
+
+Strict Citation Rules:
+- Never invent new citations
+- Only use provided hyperlinks
+- Always format as [Source: Document Title](url)
+- Maximum 2 citations per paragraph

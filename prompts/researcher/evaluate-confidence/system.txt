@@ -42,5 +42,7 @@ Return a JSON object with:
         "practical_application": str,
         "coherence": str
     }},
-    "confidence_score": float,  // Weighted average of dimension scores
+    "confidence_score": float  // Weighted average of dimension scores
 }}
+
+NOTE: Ensure that you include the `"confidence_score"` field in the JSON object. This tends to be missing in the output.

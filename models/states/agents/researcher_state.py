@@ -62,9 +62,9 @@ class ResearchHyperlinks(BaseModel):
     hyperlinks: List[ResearchHyperlink]
 
 class SearchResult(TypedDict):
-    title: str
-    link: str
-    snippet: str
+    title: str = "Unknown"
+    link: str = "Unknown"
+    snippet: str = "Unknown"
     full_content: Optional[str] = None
 
 class SearchResults(BaseModel):

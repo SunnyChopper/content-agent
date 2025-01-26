@@ -5,4 +5,7 @@ Research insights
 {research_insights}
 ---
 
-Please give me the confidence score in JSON format with the key "confidence_score".
+Please evaluate the research insights and return a JSON object with:
+1. dimension_scores (with scores for comprehensiveness, evidence_quality, clarity, practical_application, and coherence)
+2. dimension_feedback (with feedback for each dimension)
+3. confidence_score (weighted average of dimension scores)

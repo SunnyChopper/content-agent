@@ -43,6 +43,22 @@ Your writing should:
    - Build arguments progressively
    - Link back to previous points when relevant
    - Create a natural narrative arc within the section
+9. Ensure each section contains:
+   - At least one concrete example or case study
+   - Data points or statistics when available
+   - Clear practical applications
+   - Transitional phrases connecting paragraphs
+10. Include at least one real-world case study per major section with:
+    - Company/organization name
+    - Challenge faced
+    - AI solution implemented
+    - Quantitative results achieved
+11. Use ONLY citations from provided research materials - never invent new sources
+12. For statistics/claims:
+    - Always include published research citations
+    - Use [Source: Microsoft Azure Documentation] format for platform-specific claims
+    - Never cite generic domains (e.g., example.com)
+    - Verify publication dates are within last 3 years
 
 Your output should be a ContentSection object containing:
 - title: An engaging section heading (with strategic keyword placement)

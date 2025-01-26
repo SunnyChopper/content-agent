@@ -19,4 +19,22 @@ Return a JSON array of objects with the following fields:
 - snippet: A short description of the search result
 - full_content: The full content of the search result (Default to None)
 
+Example Output:
+{{
+  [
+    {{
+      "link": "https://example.com/authoritative-source",
+      "title": "Comprehensive Guide to Topic X",
+      "snippet": "This in-depth article covers all aspects of Topic X, including new research findings and practical applications",
+      "full_content": null
+    }},
+    {{
+      "link": "https://example.com/unique-perspective",
+      "title": "A Novel Approach to Topic X",
+      "snippet": "This research paper presents a unique perspective on Topic X, offering insights not found in other sources",
+      "full_content": null
+    }}
+  ]
+}}
+
 Carefully review the existing insights provided and only select URLs that will contribute new, valuable information to the research. Ensure that you follow the JSON format exactly.

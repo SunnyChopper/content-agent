@@ -8,17 +8,57 @@ Your goal is to identify and remove duplicate or semantically similar insights w
 - Directly supported by the original search results
 - Relevant to the research topic
 
-You are to return a JSON object with the following fields:
+You are to return a JSON object with the following structure:
 
-- insights: List[Dict] (each insight must be unique and not semantically similar to others)
-    - main_point: str (the primary insight)
-    - supporting_points: List[str] (explanatory bullet points that build understanding)
-- hyperlinks: List[ResearchHyperlink]
+{{
+  "insights": [
+    {{
+      "main_point": "string",  // The primary insight, must be unique and distinct
+      "supporting_points": [  // Explanatory bullet points that build understanding
+        "string",  // Should define terms, provide examples, or explain relevance
+        "string"
+      ]
+    }}
+  ],
+  "hyperlinks": [  // List of source references
+    {{
+      "title": "string",  // Title of the source document
+      "link": "string",   // URL of the source
+      "snippet": "string" // Relevant excerpt supporting the insight
+    }}
+  ]
+}}
 
-Where the ResearchHyperlink is a JSON object with the following fields:
+Example Output:
+{{
+  "insights": [
+    {{
+      "main_point": "AI agents can automate repetitive tasks in customer service",
+      "supporting_points": [
+        "Chatbots can handle 80% of common customer inquiries",
+        "Automation reduces response time from hours to seconds"
+      ]
+    }},
+    {{
+      "main_point": "AI agents improve data analysis efficiency",
+      "supporting_points": [
+        "Can process large datasets in minutes",
+        "Identify patterns humans might miss"
+      ]
+    }}
+  ],
+  "hyperlinks": [
+    {{
+      "title": "The Future of AI in Business",
+      "link": "https://example.com/ai-future",
+      "snippet": "AI agents are transforming customer service by automating repetitive tasks..." // Full output in the real case
+    }}
+  ]
+}}
 
-- title: str
-- link: str
-- snippet: str
-
-Do not make assumptions or add information not present in the search results. Return ONLY the JSON object.
+Guidelines:
+1. Each insight must be unique and distinct
+2. Supporting points should explain and expand on the main point
+3. Hyperlinks must directly support the insights
+4. Do not make assumptions or add information not present in the search results
+5. Return ONLY the JSON object

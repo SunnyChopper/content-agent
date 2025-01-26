@@ -19,3 +19,14 @@ For mathematical or technical topics:
 Review existing queries to avoid duplication. Each query should target a unique, unexplored aspect.
 
 Format response as a JSON array with exactly 5 search queries, no additional text.
+
+Example Output:
+{{
+  [
+    "Backpropagation basics in neural networks",
+    "Gradient descent optimization methods",
+    "CNN uses in medical imaging",
+    "Deep learning activation functions",
+    "Transformer architecture optimizations"
+  ]
+}}

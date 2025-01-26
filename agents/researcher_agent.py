@@ -1,11 +1,13 @@
 # Standard
-from typing import List, Any, Optional
+from typing import List, Any, Optional, Union
+from urllib.parse import urlparse, urlunparse
 from pathlib import Path
 import logging
 import hashlib
 import json
 import sys
 import os
+from datetime import datetime
 
 # Add project root to Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -16,7 +18,9 @@ from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
 from langchain_community.document_loaders import AsyncHtmlLoader
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_community.tools import DuckDuckGoSearchResults
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
+from langchain_ollama import ChatOllama
 from langchain_core.tools import Tool
 
 # Langgraph
@@ -34,7 +38,7 @@ from models.states.agents.researcher_state import (
     InsightPoint
 )
 
-from settings import MAX_RESEARCH_LOOPS, DEFAULT_OPENAI_CHEAP_MODEL
+from settings import MAX_RESEARCH_LOOPS, DEFAULT_OPENAI_CHEAP_MODEL, DEFAULT_OLLAMA_MODEL
 
 # Prompts
 BASE_PROMPT_DIR: str = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "prompts", "researcher")
@@ -101,7 +105,7 @@ class ResearchCache:
             json.dump(existing_results, file)
 
 class ResearcherAgent:
-    def __init__(self, llm: ChatOpenAI, web_search: Tool):
+    def __init__(self, llm: Union[ChatOpenAI, ChatOllama, ChatGoogleGenerativeAI], web_search: Tool):
         self.llm = llm
         self.web_search = web_search
         ResearchCache.ensure_cache_dirs()
@@ -127,8 +131,8 @@ class ResearcherAgent:
         )
         
         # Create structured output LLM
-        structured_llm = self.llm.with_structured_output(SearchQueries)
-        
+        structured_llm = self.llm.with_structured_output(SearchQueries, method="json_schema")
+
         # Invoke with both system and human messages
         return structured_llm.invoke([
             SystemMessage(content=system_prompt),
@@ -152,10 +156,30 @@ class ResearcherAgent:
             logger.info(f"Processing query ({index + 1}/{len(queries)}): {query}")
             raw_results: Any = self.web_search.invoke(query)
             logger.debug(f"Parsing string results into a list of dictionaries using the LLM")
-            structured_llm = self.llm.with_structured_output(SearchResults)
+            structured_llm = self.llm.with_structured_output(SearchResults, method="json_schema")
             parsed_results = structured_llm.invoke([
-                SystemMessage(content="Convert the search results string into a list of dictionaries with 'title', 'link', 'snippet', and an empty 'full_content' field."),
-                HumanMessage(content=f"Search results:\n{raw_results}")
+                SystemMessage(content="""Convert the search results string into a list of dictionaries with 'title', 'link', 'snippet', and an empty 'full_content' field.
+
+Return the results in this exact JSON format with the 'results' array containing the search result objects."""),
+                HumanMessage(content=f"""Search results:\n{raw_results}
+
+Example Output:
+{{
+  "results": [
+    {{
+      "title": "Example Search Result",
+      "link": "https://example.com",
+      "snippet": "This is an example search result snippet",
+      "full_content": null
+    }},
+    {{
+      "title": "Another Example",
+      "link": "https://anotherexample.com",
+      "snippet": "This is another example search result",
+      "full_content": null
+    }}
+  ]
+}}""")
             ])
             results: List[SearchResult] = parsed_results.results
             logger.debug(f"Parsed results: {results}")
@@ -166,38 +190,65 @@ class ResearcherAgent:
         return search_results
     
     def __pull_full_content(self, selected_results: List[SearchResult]) -> List[SearchResult]:
-        """Gets the full content from a list of URLs."""
-        logger.info(f"Getting full content from {len(selected_results)} URLs")
-        urls: List[str] = [result['link'] for result in selected_results]
+        """Fetches full content from URLs with proper encoding validation"""
+        processed_urls = []
+        url_to_result = {}  # Map URLs to their original results
+        
+        # Clean and validate URLs
+        for result in selected_results:
+            try:
+                url = result['link']
+                # Clean spaces and problematic characters from URL
+                url = url.replace(" ", "").replace("..", ".")
+                
+                parsed = urlparse(url)
+                # Rebuild URL with encoded components
+                normalized = urlunparse((
+                    parsed.scheme,
+                    parsed.netloc.encode('idna').decode('utf-8'),
+                    parsed.path,
+                    parsed.params,
+                    parsed.query,
+                    parsed.fragment
+                ))
+                processed_urls.append(normalized)
+                url_to_result[normalized] = result
+            except Exception as e:
+                logger.warning(f"Skipping malformed URL {result['link']}: {str(e)}")
+                continue
+
+        if not processed_urls:
+            logger.warning("No valid URLs to process")
+            return selected_results
 
         try:
-            # Load HTML content asynchronously
-            loader = AsyncHtmlLoader(urls)
-            html_docs = loader.load()
-            logger.debug(f"Loaded {len(html_docs)} HTML documents")
-            
-            # Transform HTML to readable text
-            logger.debug(f"Transforming {len(html_docs)} HTML documents to readable text")
+            loader = AsyncHtmlLoader(processed_urls)
+            docs = loader.load()
             html2text = Html2TextTransformer()
-            docs = html2text.transform_documents(html_docs)
-            logger.debug(f"Transformed {len(docs)} documents")
+            transformed = html2text.transform_documents(docs)
             
-            # Combine original search snippets with full content
+            # Create enhanced results maintaining original metadata
             enhanced_results = []
-            for i, result in enumerate(selected_results):
-                enhanced_results.append({
-                    'title': result['title'],
-                    'link': result['link'],
-                    'snippet': result['snippet'],
-                    'full_content': docs[i].page_content if i < len(docs) else ''
-                })
-                
-            logger.info(f"Successfully loaded full content for {len(docs)} out of {len(selected_results)} URLs")
+            for doc in transformed:
+                source_url = doc.metadata.get("source", "")
+                original_result = url_to_result.get(source_url)
+                if original_result:
+                    enhanced_result = dict(original_result)  # Copy original result
+                    enhanced_result['full_content'] = doc.page_content
+                    enhanced_results.append(enhanced_result)
+            
+            # Add back any results that failed content fetching
+            processed_urls_set = set(url for r in enhanced_results for url in [r['link']])
+            for result in selected_results:
+                if result['link'] not in processed_urls_set:
+                    enhanced_results.append(result)
+            
+            return enhanced_results
+            
         except Exception as e:
-            logger.warning(f"Error loading full content from URLs: {str(e)}. Falling back to snippets only.")
-            enhanced_results = selected_results
-        return enhanced_results
-    
+            logger.error(f"Error loading content: {str(e)}")
+            return selected_results  # Return original results with snippets only
+
     def __select_relevant_search_results(self, content_query: str, existing_insights: ResearchInsights, search_results: List[SearchResult], max_urls: int = 15) -> List[SearchResult]:
         """Selects relevant search results based on the content query and existing insights."""
         logger.info(f"Selecting relevant search results")
@@ -219,7 +270,7 @@ class ResearcherAgent:
         )
         system_prompt = system_prompt_template.format(max_urls=max_urls)
 
-        structured_llm = self.llm.with_structured_output(SearchResults)
+        structured_llm = self.llm.with_structured_output(SearchResults, method="json_schema")
         selected_results: SearchResults = structured_llm.invoke([
             SystemMessage(content=system_prompt),
             HumanMessage(content=human_prompt)
@@ -230,15 +281,19 @@ class ResearcherAgent:
         return self.__pull_full_content(selected_results.results)
 
     def __analyze_search_results(self, content_query: str, existing_insights: ResearchInsights, search_results: List[SearchResult]) -> ResearchInsights:
-        """Analyzes search results to extract key insights."""
+        """Analyzes search results to extract key insights with error handling"""
         logger.info(f"Analyzing {len(search_results)} search results")
 
-        # Get relevant search results
-        relevant_results: List[SearchResult] = self.__select_relevant_search_results(
-            content_query=content_query,
-            existing_insights=existing_insights,
-            search_results=search_results
-        )
+        # Get relevant search results with error handling
+        try:
+            relevant_results: List[SearchResult] = self.__select_relevant_search_results(
+                content_query=content_query,
+                existing_insights=existing_insights,
+                search_results=search_results
+            )
+        except Exception as e:
+            logger.error(f"Error selecting relevant results: {str(e)}")
+            return existing_insights
 
         logger.info(f"Selected {len(relevant_results)} relevant search results")
 
@@ -248,44 +303,69 @@ class ResearcherAgent:
         with open(ANALYZE_SEARCH_RESULTS_HUMAN_PROMPT, "r") as file:
             human_prompt_template = file.read()
 
-        # Analyze each result and extract insights
+        # Analyze each result and extract insights with error handling
         results_analyzed: int = 0
         all_insights: ResearchInsights = ResearchInsights(insights=[], hyperlinks=[], new_search_queries=[])
+
         for index, result in enumerate(relevant_results):
-            logger.info(f"Analyzing result ({index + 1}/{len(relevant_results)}): {result['title']}")
-            logger.info(f"Snippet: {result['snippet']}")
-            human_prompt = human_prompt_template.format(
-                content_query=content_query, 
-                title=result['title'], 
-                link=result['link'], 
-                snippet=result['snippet'], 
-                full_content=result['full_content'][:80000]
-            )
+            try:
+                logger.info(f"Analyzing result ({index + 1}/{len(relevant_results)}): {result['title']}")
+                
+                # Handle missing content gracefully
+                content = result.get('full_content') or result.get('snippet') or 'No content available'
+                
+                # Create hyperlink entry for the current result
+                current_hyperlink = {
+                    "title": result['title'],
+                    "link": result['link'],
+                    "snippet": result.get('snippet', '')
+                }
+                
+                human_prompt = human_prompt_template.format(
+                    content_query=content_query, 
+                    title=result['title'], 
+                    link=result['link'], 
+                    snippet=result['snippet'],
+                    full_content=content[:80000]  # Safe slice even if None
+                )
 
-            # Create structured output LLM
-            structured_llm = self.llm.with_structured_output(ResearchInsights)
-            insights: ResearchInsights = structured_llm.invoke([
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=human_prompt)
-            ])
-            logger.info(f"Pulled {len(insights.insights)} insights from {result['title']}")
-            all_insights += insights
-            results_analyzed += 1
+                # Create structured output LLM
+                structured_llm = self.llm.with_structured_output(ResearchInsights, method="json_schema")
+                insights: ResearchInsights = structured_llm.invoke([
+                    SystemMessage(content=system_prompt),
+                    HumanMessage(content=human_prompt)
+                ])
+                
+                # Add the current result's hyperlink to the insights
+                if insights.hyperlinks is None:
+                    insights.hyperlinks = []
+                insights.hyperlinks.append(current_hyperlink)
+                
+                all_insights += insights
+                results_analyzed += 1
 
-            # Check confidence level and break if we meet the threshold
-            confidence_level: ConfidenceLevel = self.__evaluate_confidence_level(content_query, all_insights.insights)
-            if confidence_level.confidence_score > 0.8:
-                logger.info(f"Confidence level is {confidence_level.confidence_score * 100:.1f}%, stopping analysis of search results early.")
-                break
-            else:
-                logger.info(f"Confidence level is {confidence_level.confidence_score * 100:.1f}%, continuing analysis.")
+                # Confidence check
+                confidence_level: ConfidenceLevel = self.__evaluate_confidence_level(content_query, all_insights.insights)
+                if confidence_level.confidence_score > 0.8:
+                    logger.info(f"High confidence ({confidence_level.confidence_score*100:.1f}%), stopping early")
+                    break
 
-        logger.info(f"Pulled {len(all_insights.insights)} insights from {results_analyzed} search results")
+            except Exception as e:
+                logger.error(f"Failed to analyze result {result['title']}: {str(e)}")
+                continue
+
+        logger.info(f"Processed {results_analyzed}/{len(relevant_results)} results successfully")
+        logger.info(f"{len(all_insights.insights)} insights pulled.")
+        logger.info(f"{len(all_insights.hyperlinks)} hyperlinks pulled.")
         return all_insights
 
     def __deduplicate_insights(self, insights: ResearchInsights) -> ResearchInsights:
         """Deduplicates insights using semantic similarity."""
         logger.info(f"Deduplicating {len(insights.insights)} insights")
+
+        # If we have no insights, return empty ResearchInsights
+        if not insights.insights:
+            return ResearchInsights(insights=[], hyperlinks=[], new_search_queries=[])
 
         # Read system and human prompts
         with open(DEDUPE_INSIGHTS_SYSTEM_PROMPT, "r") as file:
@@ -293,14 +373,41 @@ class ResearcherAgent:
         with open(DEDUPE_INSIGHTS_HUMAN_PROMPT, "r") as file:
             human_prompt_template = file.read()
 
-        # Format the human prompt
-        human_prompt = human_prompt_template.format(insights=str(insights))
+        # Process insights in batches of 5 to avoid token limits
+        batch_size = 5
+        all_deduped_insights = ResearchInsights(insights=[], hyperlinks=[], new_search_queries=[])
+        
+        for i in range(0, len(insights.insights), batch_size):
+            batch = insights.insights[i:i + batch_size]
+            batch_hyperlinks = insights.hyperlinks[i:i + batch_size] if insights.hyperlinks else []
+            
+            batch_insights = ResearchInsights(
+                insights=batch,
+                hyperlinks=batch_hyperlinks,
+                new_search_queries=[]
+            )
+            
+            # Format the human prompt for this batch
+            human_prompt = human_prompt_template.format(insights=str(batch_insights))
 
-        structured_llm = self.llm.with_structured_output(ResearchInsights)
-        return structured_llm.invoke([
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=human_prompt)
-        ])
+            structured_llm = self.llm.with_structured_output(ResearchInsights, method="json_schema")
+            batch_deduped = structured_llm.invoke([
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=human_prompt)
+            ])
+            
+            all_deduped_insights += batch_deduped
+
+        # Final deduplication pass if we have multiple batches
+        if len(insights.insights) > batch_size:
+            human_prompt = human_prompt_template.format(insights=str(all_deduped_insights))
+            structured_llm = self.llm.with_structured_output(ResearchInsights, method="json_schema")
+            all_deduped_insights = structured_llm.invoke([
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=human_prompt)
+            ])
+
+        return all_deduped_insights
 
     def __evaluate_confidence_level(self, content_query: str, insights: List[InsightPoint]) -> ConfidenceLevel:
         """Evaluates the confidence level of the research insights."""
@@ -325,7 +432,7 @@ class ResearcherAgent:
         )
 
         # Create structured output LLM
-        structured_llm = self.llm.with_structured_output(ConfidenceLevel)
+        structured_llm = self.llm.with_structured_output(ConfidenceLevel, method="json_schema")
         confidence_eval = structured_llm.invoke([
             SystemMessage(content=system_prompt),
             HumanMessage(content=human_prompt)
@@ -350,7 +457,7 @@ class ResearcherAgent:
             human_prompt_template = file.read()
 
         human_prompt = human_prompt_template.format(content_query=content_query, insights=str(insights))
-        structured_llm = self.llm.with_structured_output(FollowUpTopics)
+        structured_llm = self.llm.with_structured_output(FollowUpTopics, method="json_schema")
         return structured_llm.invoke([
             SystemMessage(content=system_prompt),
             HumanMessage(content=human_prompt)
@@ -462,10 +569,13 @@ def researcher_agent_postaction(state: BlogWorkflowState) -> str:
     else:
         return END
 
+gpt_4o_mini = ChatOpenAI(model=DEFAULT_OPENAI_CHEAP_MODEL, temperature=0)
+local_llm = ChatOllama(model=DEFAULT_OLLAMA_MODEL, temperature=0)
+
 workflow = StateGraph(BlogWorkflowState)
 search_api = DuckDuckGoSearchAPIWrapper(max_results=5)
 researcher_agent = ResearcherAgent(
-    llm=ChatOpenAI(model=DEFAULT_OPENAI_CHEAP_MODEL, temperature=0),
+    llm=local_llm,
     web_search=DuckDuckGoSearchResults(api_wrapper=search_api)
 )
 

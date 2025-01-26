@@ -1,5 +1,5 @@
 # Content Agent
-**Goal**: Create an LLM agent system (by leveraging LangGraph) that can write high-quality, accurate and engaging content for Medium and personal blogs. By being able to write content that is accurate and engaging, it allows me to generate revenue from Medium (through the Medium Partner Program) and personal blogs (through ads and affiliate marketing).
+**Goal**: Create an LLM agent system (by leveraging LangGraph) that can write high-quality, accurate and engaging content. The system uses multiple specialized agents working together to research, write, review and edit content.
 
 ## Atomic Agents
 Decomposing a multi-agent system for writing high-quality technical blog posts with a target read time can be effectively achieved using the Atomic Design pattern applied to LangGraph agents. Here's a possible breakdown:

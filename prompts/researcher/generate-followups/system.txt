@@ -43,6 +43,12 @@ Output:
     "Practical applications of RAG in real-world scenarios"
 ]
 
---- Example 3 ---
-Insights:
-- 
+=== End of Examples ===
+
+Now, please generate follow-up search queries for the following insights:
+
+=== Insights ===
+{insights}
+=== End of Insights ===
+
+Output:

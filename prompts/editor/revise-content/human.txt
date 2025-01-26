@@ -1,0 +1,8 @@
+Title: {title}
+
+Content to revise:
+{sections}
+
+Target read time: {target_read_time} minutes
+
+Please revise the content while preserving all sections and their structure. Focus on improving readability and flow while maintaining the core information and citations. 
